@@ -1,7 +1,252 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, jsonify, send_file
+import os
+import asyncio
+import threading
+from pathlib import Path
+from app.services.websocket_server import start_secure_server
+from app.services.websocket_client import SecureFileClient
 
 main = Blueprint('main', __name__)
 
+# Biến global để theo dõi server
+websocket_server_running = False
+
 @main.route('/')
 def index():
+    """Trang chủ hiển thị giao diện gửi file tài chính"""
     return render_template('index.html')
+
+@main.route('/start_server', methods=['POST'])
+def start_server():
+    """Khởi chạy WebSocket server"""
+    global websocket_server_running
+    
+    try:
+        if not websocket_server_running:
+            # Chạy server trong thread riêng
+            def run_server():
+                global websocket_server_running
+                websocket_server_running = True
+                asyncio.run(start_secure_server())
+            
+            server_thread = threading.Thread(target=run_server, daemon=True)
+            server_thread.start()
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'WebSocket server đã được khởi chạy tại ws://localhost:8765'
+            })
+        else:
+            return jsonify({
+                'status': 'info',
+                'message': 'Server đã đang chạy'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi khởi chạy server: {str(e)}'
+        })
+
+@main.route('/upload_file', methods=['POST'])
+def upload_file():
+    """Upload file tài chính lên server"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({
+                'status': 'error',
+                'message': 'Không có file được chọn'
+            })
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({
+                'status': 'error',
+                'message': 'Tên file không hợp lệ'
+            })
+        
+        # Tạo thư mục upload nếu chưa có
+        upload_dir = Path('uploads')
+        upload_dir.mkdir(exist_ok=True)
+        
+        # Lưu file upload
+        file_path = upload_dir / file.filename
+        file.save(str(file_path))
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'File {file.filename} đã được upload thành công',
+            'file_path': str(file_path)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi upload file: {str(e)}'
+        })
+
+@main.route('/send_file', methods=['POST'])
+def send_file_secure():
+    """Gửi file qua WebSocket một cách an toàn"""
+    try:
+        data = request.get_json()
+        file_path = data.get('file_path')
+        
+        if not file_path:
+            return jsonify({
+                'status': 'error',
+                'message': 'Thiếu đường dẫn file'
+            })
+        
+        if not Path(file_path).exists():
+            return jsonify({
+                'status': 'error',
+                'message': 'File không tồn tại'
+            })
+        
+        # Gửi file qua WebSocket client
+        async def send_file_async():
+            client = SecureFileClient()
+            return await client.send_file_secure(file_path)
+        
+        # Chạy async function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        success = loop.run_until_complete(send_file_async())
+        loop.close()
+        
+        if success:
+            return jsonify({
+                'status': 'success',
+                'message': 'File đã được gửi an toàn thành công'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Gửi file thất bại'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi gửi file: {str(e)}'
+        })
+
+@main.route('/list_received_files')
+def list_received_files():
+    """Liệt kê các file đã nhận"""
+    try:
+        received_dir = Path('received_files')
+        if not received_dir.exists():
+            return jsonify({
+                'status': 'success',
+                'files': []
+            })
+        
+        files = []
+        for file_path in received_dir.iterdir():
+            if file_path.is_file():
+                files.append({
+                    'name': file_path.name,
+                    'size': file_path.stat().st_size,
+                    'path': str(file_path)
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'files': files
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi liệt kê file: {str(e)}'
+        })
+
+@main.route('/download_file/<path:filename>')
+def download_file(filename):
+    """Download file đã nhận"""
+    try:
+        file_path = Path('received_files') / filename
+        if file_path.exists():
+            return send_file(str(file_path), as_attachment=True)
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'File không tồn tại'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi download file: {str(e)}'
+        })
+
+@main.route('/create_test_file')
+def create_test_file():
+    """Tạo file tài chính mẫu để test"""
+    try:
+        # Tạo thư mục test nếu chưa có
+        test_dir = Path('test_files')
+        test_dir.mkdir(exist_ok=True)
+        
+        # Nội dung file tài chính mẫu
+        sample_content = """BÁOTÀI CHÍNH NGÂN HÀNG ABC
+====================================
+Ngày báo cáo: 2025-06-29
+Mã ngân hàng: ABC123
+Số tài khoản: 1234567890
+
+SỐ DƯ TÀI KHOẢN
+- Số dư đầu kỳ: 1,000,000,000 VNĐ
+- Số dư cuối kỳ: 1,250,000,000 VNĐ
+- Tăng/giảm: +250,000,000 VNĐ
+
+GIAO DỊCH TRONG THÁNG
+=====================
+1. Thu nhập:
+   - Lương: 50,000,000 VNĐ
+   - Thưởng: 30,000,000 VNĐ
+   - Đầu tư: 420,000,000 VNĐ
+   - Tổng thu: 500,000,000 VNĐ
+
+2. Chi tiêu:
+   - Sinh hoạt: 150,000,000 VNĐ
+   - Đầu tư: 100,000,000 VNĐ
+   - Khác: 50,000,000 VNĐ
+   - Tổng chi: 300,000,000 VNĐ
+
+LÃI SUẤT & PHỤ PHI
+==================
+- Lãi suất tiết kiệm: 2.5%/năm
+- Phí quản lý tài khoản: 50,000 VNĐ/tháng
+- Phí chuyển khoản: 5,000 VNĐ/giao dịch
+
+THÔNG TIN BẢO MẬT
+=================
+- Dữ liệu này chứa thông tin tài chính nhạy cảm
+- Không được sao chép hoặc chia sẻ
+- Mã hóa bắt buộc khi truyền tải
+- Chỉ người được ủy quyền mới được truy cập
+
+Chữ ký số: [Sẽ được tạo tự động]
+Mã hash: [Sẽ được tạo tự động]
+"""
+        
+        # Lưu file
+        test_file = test_dir / 'finance.txt'
+        with open(test_file, 'w', encoding='utf-8') as f:
+            f.write(sample_content)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'File test đã được tạo: {test_file}',
+            'file_path': str(test_file),
+            'size': len(sample_content.encode('utf-8'))
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Lỗi tạo file test: {str(e)}'
+        })
