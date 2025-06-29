@@ -1,0 +1,13 @@
+BÁO CÁO TÀI CHÍNH NGÂN HÀNG VPBANK
+
+Doanh thu: 15,000,000,000 VND
+Lãi suất: 8.5%
+Tổng tài sản: 250,000,000,000 VND
+Nợ xấu: 2.3%
+
+Các chỉ số an toàn vốn:
+- CAR: 12.5%
+- ROA: 1.2%  
+- ROE: 15.8%
+
+Báo cáo được tạo tự động bởi hệ thống bảo mật ATBM-TT

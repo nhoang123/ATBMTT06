@@ -1,0 +1,40 @@
+BÁOTÀI CHÍNH NGÂN HÀNG ABC
+====================================
+Ngày báo cáo: 2025-06-29
+Mã ngân hàng: ABC123
+Số tài khoản: 1234567890
+
+SỐ DƯ TÀI KHOẢN
+- Số dư đầu kỳ: 1,000,000,000 VNĐ
+- Số dư cuối kỳ: 1,250,000,000 VNĐ
+- Tăng/giảm: +250,000,000 VNĐ
+
+GIAO DỊCH TRONG THÁNG
+=====================
+1. Thu nhập:
+   - Lương: 50,000,000 VNĐ
+   - Thưởng: 30,000,000 VNĐ
+   - Đầu tư: 420,000,000 VNĐ
+   - Tổng thu: 500,000,000 VNĐ
+
+2. Chi tiêu:
+   - Sinh hoạt: 150,000,000 VNĐ
+   - Đầu tư: 100,000,000 VNĐ
+   - Khác: 50,000,000 VNĐ
+   - Tổng chi: 300,000,000 VNĐ
+
+LÃI SUẤT & PHỤ PHI
+==================
+- Lãi suất tiết kiệm: 2.5%/năm
+- Phí quản lý tài khoản: 50,000 VNĐ/tháng
+- Phí chuyển khoản: 5,000 VNĐ/giao dịch
+
+THÔNG TIN BẢO MẬT
+=================
+- Dữ liệu này chứa thông tin tài chính nhạy cảm
+- Không được sao chép hoặc chia sẻ
+- Mã hóa bắt buộc khi truyền tải
+- Chỉ người được ủy quyền mới được truy cập
+
+Chữ ký số: [Sẽ được tạo tự động]
+Mã hash: [Sẽ được tạo tự động]
