@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="container">
+        <div class="row justify-content-center align-items-center" style="min-height: 70vh;">
+            <div class="col-md-6">
+                <div class="card shadow fade-in">
+                    <div class="card-header text-center">Đăng nhập hệ thống</div>
+                    <div class="card-body">
+                        <form method="POST" action="">
+                            {{ form.hidden_tag() }}
+                            <div class="form-group mb-3">
+                                {{ form.username.label(class="form-label fw-bold") }}
+                                {{ form.username(class="form-control", placeholder="Tên đăng nhập") }}
+                                {% for error in form.username.errors %}
+                                    <span class="text-danger">{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                            <div class="form-group mb-3">
+                                {{ form.password.label(class="form-label fw-bold") }}
+                                {{ form.password(class="form-control", placeholder="Mật khẩu") }}
+                                {% for error in form.password.errors %}
+                                    <span class="text-danger">{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                            <div class="form-group mt-4 d-grid gap-2">
+                                {{ form.submit(class="btn btn-primary btn-lg") }}
+                            </div>
+                        </form>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('auth.register') }}">Chưa có tài khoản? Đăng ký ngay</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

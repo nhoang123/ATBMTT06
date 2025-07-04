@@ -1,10 +1,14 @@
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, render_template, request, jsonify, send_file, redirect, url_for, flash
 import os
 import asyncio
 import threading
 from pathlib import Path
+from flask_login import login_required, current_user
 from app.services.websocket_server import start_secure_server
 from app.services.websocket_client import SecureFileClient
+from app.models import db, User
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 main = Blueprint('main', __name__)
 
@@ -12,9 +16,45 @@ main = Blueprint('main', __name__)
 websocket_server_running = False
 
 @main.route('/')
+@login_required
+def home():
+    # Sau khi đăng nhập, cho phép chọn vai trò
+    return render_template('main/choose_role.html', title='Chọn vai trò')
+
+@main.route('/index')
+@login_required
 def index():
-    """Trang chủ hiển thị giao diện gửi file tài chính"""
-    return render_template('index.html')
+    return redirect(url_for('main.home'))
+
+@main.route('/register_key', methods=['GET', 'POST'])
+@login_required
+def register_key():
+    if request.method == 'POST':
+        private_key = request.form.get('private_key')
+        if not private_key:
+            flash('Vui lòng nhập khóa riêng (private key)', 'danger')
+            return render_template('register_key.html')
+        try:
+            private_key_obj = serialization.load_pem_private_key(
+                private_key.encode(),
+                password=None,
+                backend=default_backend()
+            )
+            public_key = private_key_obj.public_key()
+            public_pem = public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            # Lưu public key vào user
+            user = User.query.get(current_user.id)
+            user.public_key = public_pem.decode()
+            db.session.commit()
+            flash('Đăng ký khóa thành công!', 'success')
+            return redirect(url_for('main.index'))
+        except Exception as e:
+            flash('Khóa riêng không hợp lệ hoặc lỗi xử lý!', 'danger')
+            return render_template('register_key.html')
+    return render_template('register_key.html')
 
 @main.route('/start_server', methods=['POST'])
 def start_server():

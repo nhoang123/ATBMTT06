@@ -2,3 +2,4 @@ Flask
 python-dotenv
 pycryptodome
 websockets
+Flask-SocketIO

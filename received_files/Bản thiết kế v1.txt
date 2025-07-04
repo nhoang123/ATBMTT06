@@ -1,0 +1,89 @@
+my_web_project/                 # Thư mục gốc dự án
+│
+├── app/                        # Package chính của ứng dụng
+│   ├── __init__.py            # Khởi tạo Flask app
+│   ├── models/                # Models của ứng dụng
+│   │   └── user.py           # Model User (nếu cần)
+│   │
+│   ├── routes/                # Routes và controllers
+│   │   ├── __init__.py       
+│   │   └── main.py           # Xử lý các route chính
+│   │
+│   ├── services/             # Business logic và services
+│   │   ├── auth_service.py   # Xử lý xác thực (nếu cần)
+│   │   ├── crypto_service.py # Xử lý mã hóa (AES-GCM, RSA, SHA-512)
+│   │   ├── websocket_client.py # WebSocket client bảo mật
+│   │   └── websocket_server.py # WebSocket server bảo mật
+│   │
+│   └── templates/            # Templates HTML
+│       └── index.html        # Giao diện người dùng
+│
+├── received_files/           # Thư mục lưu files đã nhận
+├── test_files/              # Thư mục chứa files test
+├── uploads/                 # Thư mục upload files
+├── tests/                   # Unit tests
+│   ├── __init__.py
+│   └── test_basic.py       # Test cases cơ bản
+│
+├── config.py               # Cấu hình ứng dụng
+├── requirements.txt       # Dependencies
+├── install_deps.py       # Script cài đặt dependencies
+├── run.py               # Entry point chạy ứng dụng
+└── demo_test.py        # Script demo và test chức năng
+
+1. Core Application (app/)
+models/: Chứa các model dữ liệu
+routes/: Xử lý các endpoint API và routes
+services/:
+crypto_service.py: Implement các thuật toán mã hóa (AES-GCM, RSA, SHA-512)
+websocket_server.py: WebSocket server xử lý kết nối an toàn
+websocket_client.py: WebSocket client gửi file bảo mật
+templates/: Giao diện người dùng
+2. Security Features
+AES-GCM 256-bit cho mã hóa file
+RSA 1024-bit cho trao đổi khóa và chữ ký số
+SHA-512 cho hash và xác thực toàn vẹn
+Nén dữ liệu với zlib
+3. File Organization
+uploads: Lưu files người dùng upload
+received_files: Lưu files đã nhận và giải mã
+test_files: Chứa files test demo
+4. Configuration & Setup
+config.py: Cấu hình ứng dụng
+requirements.txt: Dependencies cần thiết
+install_deps.py: Script tự động cài đặt
+5. Testing & Demo
+tests: Unit tests
+demo_test.py: Script demo toàn bộ chức năng
+📚 CÔNG NGHỆ SỬ DỤNG
+Backend Framework: Flask
+WebSocket: websockets library
+Cryptography: pycryptodome
+Compression: zlib
+Frontend: HTML/CSS/JavaScript
+🔒 LUỒNG BẢO MẬT
+Handshake & Key Exchange:
+
+Client-Server kết nối qua WebSocket
+Trao đổi khóa công khai RSA
+Thiết lập session key AES
+File Transfer:
+
+Nén file với zlib
+Mã hóa AES-GCM với session key
+Ký số metadata với RSA
+Tính hash SHA-512
+Truyền file an toàn
+File Reception:
+
+Xác minh chữ ký số
+Kiểm tra hash toàn vẹn
+Giải mã AES-GCM
+Giải nén và lưu file
+📋 HƯỚNG DẪN SỬ DỤNG
+Cài đặt:
+python install_deps.py
+Chạy ứng dụng:
+python run.py
+Demo và test:
+python demo_test.py

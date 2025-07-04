@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow fade-in">
+                <div class="card-header text-center fs-4">Chọn vai trò sử dụng hệ thống</div>
+                <div class="card-body text-center">
+                    <p class="mb-4">Bạn muốn sử dụng hệ thống với vai trò nào?</p>
+                    <a href="{{ url_for('sender.sender_index') }}" class="btn btn-primary btn-lg m-2"><i class="bi bi-send"></i> Người Gửi File</a>
+                    <a href="{{ url_for('receiver.receiver_index') }}" class="btn btn-success btn-lg m-2"><i class="bi bi-inbox"></i> Người Nhận File</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
