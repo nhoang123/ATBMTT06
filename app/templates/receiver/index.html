@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🔐 Hệ Thống Gửi Báo Cáo Tài Chính An Toàn - <span class="text-success">Người Nhận</span></h1>
+        <p>Mã hóa AES-GCM + RSA 1024-bit + SHA-512 + Nén zlib</p>
+    </div>
+    <div class="content">
+        <div class="security-info">
+            <h3>🛡️ Đặc Điểm Bảo Mật</h3>
+            <ul class="security-list">
+                <li>Mã hóa dữ liệu: AES-GCM 256-bit</li>
+                <li>Trao khóa & ký số: RSA 1024-bit (PKCS#1 v1.5)</li>
+                <li>Kiểm tra toàn vẹn: SHA-512</li>
+                <li>Nén dữ liệu: zlib để giảm kích thước</li>
+                <li>Handshake an toàn với xác thực hai chiều</li>
+            </ul>
+        </div>
+        <div class="section mb-4">
+            <h2>🤝 Handshake bảo mật</h2>
+            <div id="handshake-message" class="mb-2"></div>
+            <button id="reply-handshake" class="btn btn-success mb-2" style="display:none;"><i class="bi bi-arrow-repeat"></i> Bắt tay lại</button>
+            <div id="handshake-status" class="alert alert-secondary" style="display:none;"></div>
+        </div>
+        <div class="section mb-4">
+            <h2>📝 Xác thực metadata</h2>
+            <form id="verify-metadata-form">
+                <div class="mb-2">
+                    <label class="form-label fw-bold">Tên người gửi</label>
+                    <input type="text" class="form-control" id="sender_username" name="sender_username" placeholder="Nhập username người gửi" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-bold">Metadata (JSON)</label>
+                    <textarea class="form-control" id="metadata" name="metadata" rows="3" placeholder='{"filename":..., "timestamp":..., "filetype":...}' required></textarea>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-bold">Chữ ký (base64)</label>
+                    <textarea class="form-control" id="signature" name="signature" rows="2" placeholder="Dán chữ ký metadata" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Xác thực metadata</button>
+            </form>
+            <div id="verify-metadata-result" class="mt-2"></div>
+        </div>
+        <div class="section mb-4">
+            <h2>👤 Thông tin tài khoản</h2>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p><b>Tên đăng nhập:</b> {{ user_info.username }}</p>
+                    <p><b>Public Key:</b><br><textarea class="form-control" rows="3" readonly>{{ user_info.public_key }}</textarea></p>
+                    <p><b>Private Key (trình duyệt lưu):</b><br>
+                        <textarea class="form-control" id="show_private_key" rows="3" readonly></textarea>
+                        <button class="btn btn-outline-secondary mt-2" type="button" onclick="showPrivateKey()">Hiện Private Key</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="section">
+            <h2>📥 File Đã Nhận</h2>
+            <button class="btn btn-success mb-3" id="refresh-files"><i class="bi bi-arrow-clockwise"></i> Làm mới danh sách file</button>
+            <div id="received-files-list">
+                <!-- Danh sách file sẽ được load ở đây -->
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const currentUsername = "{{ current_username }}";
+let socket = io();
+socket.on('connect', function() {
+    socket.emit('register_username', {username: currentUsername});
+});
+
+const handshakeMessage = document.getElementById('handshake-message');
+const handshakeStatus = document.getElementById('handshake-status');
+const replyBtn = document.getElementById('reply-handshake');
+
+// Nhận handshake_hello từ người gửi
+socket.on('handshake_hello', function(data) {
+    handshakeMessage.innerText = data.message;
+    handshakeStatus.style.display = 'none';
+    replyBtn.style.display = 'inline-block';
+    // Lưu lại sender để reply
+    replyBtn.dataset.sender = data.sender;
+});
+
+replyBtn.onclick = function() {
+    const sender = replyBtn.dataset.sender;
+    if (!sender) return;
+    socket.emit('handshake_ready', {
+        sender: currentUsername, // người nhận
+        receiver: sender,        // người gửi
+        message: 'Ready'
+    });
+    handshakeStatus.style.display = 'block';
+    handshakeStatus.className = 'alert alert-info';
+    handshakeStatus.innerText = 'Đã gửi xác nhận bắt tay lại!';
+    replyBtn.style.display = 'none';
+};
+
+// Xác thực metadata
+const verifyForm = document.getElementById('verify-metadata-form');
+verifyForm.onsubmit = async function(e) {
+    e.preventDefault();
+    const sender = document.getElementById('sender_username').value.trim();
+    const metadata = document.getElementById('metadata').value.trim();
+    const signature = document.getElementById('signature').value.trim();
+    const resultDiv = document.getElementById('verify-metadata-result');
+    if (!sender || !metadata || !signature) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Vui lòng nhập đủ thông tin!</div>';
+        return;
+    }
+    resultDiv.innerHTML = '<div class="alert alert-info">Đang xác thực...</div>';
+    try {
+        const response = await fetch('/api/verify_metadata', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sender_username: sender, metadata: metadata, signature: signature})
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
+        }
+    } catch (err) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi xác thực!</div>';
+    }
+};
+
+async function loadReceivedFiles() {
+    const listDiv = document.getElementById('received-files-list');
+    listDiv.innerHTML = '<div class="text-center text-secondary">Đang tải danh sách file...</div>';
+    try {
+        const response = await fetch('/list_received_files');
+        const data = await response.json();
+        if (data.status === 'success' && data.files.length > 0) {
+            let html = '<ul class="list-group">';
+            data.files.forEach(f => {
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><i class='bi bi-file-earmark-text'></i> ${f.name} <span class='text-muted small'>(${(f.size/1024).toFixed(1)} KB)</span></span>
+                    <a href="/download_file/${encodeURIComponent(f.name)}" class="btn btn-outline-primary btn-sm"><i class="bi bi-download"></i> Tải về</a>
+                </li>`;
+            });
+            html += '</ul>';
+            listDiv.innerHTML = html;
+        } else {
+            listDiv.innerHTML = '<div class="alert alert-warning">Chưa có file nào được nhận.</div>';
+        }
+    } catch (err) {
+        listDiv.innerHTML = '<div class="alert alert-danger">Lỗi tải danh sách file!</div>';
+    }
+}
+document.getElementById('refresh-files').onclick = loadReceivedFiles;
+window.onload = loadReceivedFiles;
+
+function showPrivateKey() {
+    const key = localStorage.getItem('private_key') || '';
+    document.getElementById('show_private_key').value = key;
+}
+
+// Hàm hỗ trợ: chuyển PEM private key -> CryptoKey
+async function importPrivateKey(pem) {
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    let pemContents = pem.replace(pemHeader, '').replace(pemFooter, '').replace(/\s/g, '');
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return await window.crypto.subtle.importKey(
+        'pkcs8',
+        binaryDer.buffer,
+        {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256',
+        },
+        false,
+        ['decrypt']
+    );
+}
+
+// Hàm giải mã session key bằng private key
+async function decryptSessionKey(encryptedSessionKeyB64, privateKeyPem) {
+    const privateKey = await importPrivateKey(privateKeyPem);
+    const encrypted = Uint8Array.from(atob(encryptedSessionKeyB64), c => c.charCodeAt(0));
+    const sessionKeyRaw = await window.crypto.subtle.decrypt(
+        { name: 'RSA-OAEP' },
+        privateKey,
+        encrypted
+    );
+    // Import lại session key AES
+    return await window.crypto.subtle.importKey(
+        'raw',
+        sessionKeyRaw,
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+    );
+}
+
+// Hàm giải mã file bằng session key
+async function decryptFileWithSessionKey(encryptedFileObj, sessionKey) {
+    const iv = new Uint8Array(encryptedFileObj.iv);
+    const encrypted = new Uint8Array(encryptedFileObj.encrypted);
+    const decrypted = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        sessionKey,
+        encrypted
+    );
+    return new Blob([decrypted]);
+}
+
+// Nhận session key từ sender
+let receivedSessionKey = null;
+socket.on('receive_session_key', async function(data) {
+    const privateKey = localStorage.getItem('private_key') || '';
+    if (!privateKey) {
+        alert('Không tìm thấy private key để giải mã session key!');
+        return;
+    }
+    try {
+        receivedSessionKey = await decryptSessionKey(data.encrypted_session_key, privateKey);
+        alert('Đã nhận và giải mã session key thành công!');
+    } catch (err) {
+        alert('Lỗi giải mã session key: ' + err);
+    }
+});
+
+// Nhận file mã hóa từ sender
+socket.on('receive_file_data', async function(data) {
+    const fileName = data.filename;
+    const encryptedFileObj = data.encrypted_file;
+    const encryptedSessionKeyB64 = data.encrypted_session_key;
+    const senderPrivateKey = data.sender_private_key;
+    if (!receivedSessionKey) {
+        alert('Chưa nhận được hoặc giải mã session key!');
+        return;
+    }
+    try {
+        const decryptedBlob = await decryptFileWithSessionKey(encryptedFileObj, receivedSessionKey);
+        // Tạo link tải file
+        const url = URL.createObjectURL(decryptedBlob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = fileName;
+        downloadLink.textContent = `Tải file đã giải mã: ${fileName}`;
+        // Hiển thị thông báo
+        alert(`Đã nhận file: ${fileName}\nKhóa giải mã (private key sender):\n${senderPrivateKey}`);
+        // Thêm link tải vào giao diện
+        const listDiv = document.getElementById('received-files-list');
+        const info = document.createElement('div');
+        info.innerHTML = `<div class='alert alert-success'>Đã nhận file: <b>${fileName}</b><br>Khóa giải mã (private key sender):<br><textarea class='form-control' rows='3' readonly>${senderPrivateKey}</textarea></div>`;
+        listDiv.prepend(info);
+        listDiv.prepend(downloadLink);
+    } catch (err) {
+        alert('Lỗi giải mã file: ' + err);
+    }
+});
+</script>
+{% endblock %}

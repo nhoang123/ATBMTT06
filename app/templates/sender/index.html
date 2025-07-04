@@ -1,0 +1,397 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🔐 Hệ Thống Gửi Báo Cáo Tài Chính An Toàn - <span class="text-primary">Người Gửi</span></h1>
+        <p>Mã hóa AES-GCM + RSA 1024-bit + SHA-512 + Nén zlib</p>
+    </div>
+    <div class="content">
+        <div class="security-info">
+            <h3>🛡️ Đặc Điểm Bảo Mật</h3>
+            <ul class="security-list">
+                <li>Mã hóa dữ liệu: AES-GCM 256-bit</li>
+                <li>Trao khóa & ký số: RSA 1024-bit (PKCS#1 v1.5)</li>
+                <li>Kiểm tra toàn vẹn: SHA-512</li>
+                <li>Nén dữ liệu: zlib để giảm kích thước</li>
+                <li>Handshake an toàn với xác thực hai chiều</li>
+            </ul>
+        </div>
+        <div class="section mb-4">
+            <h2>🤝 Handshake bảo mật</h2>
+            <div class="mb-2">
+                <label for="receiver_username" class="form-label fw-bold">Tên người nhận</label>
+                <input type="text" class="form-control" id="receiver_username" name="receiver_username" placeholder="Nhập username người nhận" required>
+            </div>
+            <button id="start-handshake" class="btn btn-warning mb-2"><i class="bi bi-link-45deg"></i> Bắt đầu handshake</button>
+            <div id="handshake-status" class="alert alert-secondary" style="display:none;"></div>
+        </div>
+        <div class="section">
+            <h2>📁 Gửi File Tài Chính</h2>
+            <form id="send-file-form" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="file" class="form-label fw-bold">Chọn file để gửi</label>
+                    <input class="form-control" type="file" id="file" name="file" required>
+                </div>
+                <div class="mb-3">
+                    <label for="private_key" class="form-label fw-bold">Private Key (PEM)</label>
+                    <div class="input-group">
+                        <textarea class="form-control" id="private_key" name="private_key" rows="4" placeholder="Dán private key PEM của bạn tại đây" required></textarea>
+                        <button class="btn btn-outline-secondary" type="button" id="fill-private-key">Tự điền khóa</button>
+                    </div>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-upload"></i> Gửi File</button>
+                </div>
+            </form>
+            <div id="send-file-result" class="mt-3"></div>
+        </div>
+        <div class="section mb-4">
+            <h2>👤 Thông tin tài khoản</h2>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p><b>Tên đăng nhập:</b> {{ user_info.username }}</p>
+                    <p><b>Public Key:</b><br><textarea class="form-control" rows="3" readonly>{{ user_info.public_key }}</textarea></p>
+                    <p><b>Private Key (trình duyệt lưu):</b><br>
+                        <textarea class="form-control" id="show_private_key" rows="3" readonly></textarea>
+                        <button class="btn btn-outline-secondary mt-2" type="button" onclick="showPrivateKey()">Hiện Private Key</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="section mb-4">
+            <h2>🔑 Trao đổi Session Key</h2>
+            <button id="gen-session-key" class="btn btn-info mb-2">Tạo & gửi Session Key</button>
+            <div id="session-key-status" class="alert alert-secondary" style="display:none;"></div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const currentUsername = "{{ current_username }}";
+let socket = io();
+// Đăng ký username với server khi kết nối socket
+socket.on('connect', function() {
+    socket.emit('register_username', {username: currentUsername});
+});
+
+const handshakeBtn = document.getElementById('start-handshake');
+const handshakeStatus = document.getElementById('handshake-status');
+
+handshakeBtn.onclick = function() {
+    const receiver = document.getElementById('receiver_username').value.trim();
+    if (!receiver) {
+        handshakeStatus.style.display = 'block';
+        handshakeStatus.className = 'alert alert-danger';
+        handshakeStatus.innerText = 'Vui lòng nhập tên người nhận!';
+        return;
+    }
+    handshakeStatus.style.display = 'block';
+    handshakeStatus.className = 'alert alert-info';
+    handshakeStatus.innerText = 'Đang gửi bắt tay...';
+    socket.emit('handshake_hello', {
+        sender: currentUsername,
+        receiver: receiver,
+        message: 'Hello'
+    });
+};
+
+// Nhận phản hồi handshake_ready từ người nhận
+socket.on('handshake_ready', function(data) {
+    handshakeStatus.style.display = 'block';
+    handshakeStatus.className = 'alert alert-success';
+    handshakeStatus.innerText = data.message;
+});
+
+// Hàm hỗ trợ: chuyển PEM -> CryptoKey
+async function importPrivateKey(pem) {
+    // Loại bỏ header/footer và newline
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    let pemContents = pem.replace(pemHeader, '').replace(pemFooter, '').replace(/\s/g, '');
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return await window.crypto.subtle.importKey(
+        'pkcs8',
+        binaryDer.buffer,
+        {
+            name: 'RSASSA-PKCS1-v1_5',
+            hash: 'SHA-512',
+        },
+        false,
+        ['sign']
+    );
+}
+
+// Hàm hỗ trợ: chuyển PEM public key -> CryptoKey
+async function importPublicKey(pem) {
+    const pemHeader = "-----BEGIN PUBLIC KEY-----";
+    const pemFooter = "-----END PUBLIC KEY-----";
+    let pemContents = pem.replace(pemHeader, '').replace(pemFooter, '').replace(/\s/g, '');
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return await window.crypto.subtle.importKey(
+        'spki',
+        binaryDer.buffer,
+        {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256',
+        },
+        false,
+        ['encrypt']
+    );
+}
+
+// Hàm sinh session key AES 256 bit
+async function generateSessionKey() {
+    return await window.crypto.subtle.generateKey(
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+    );
+}
+
+// Hàm export session key ra ArrayBuffer
+async function exportSessionKey(key) {
+    return await window.crypto.subtle.exportKey('raw', key);
+}
+
+// Hàm mã hóa session key bằng public key người nhận
+async function encryptSessionKey(sessionKeyBuffer, receiverPublicKeyPem) {
+    const publicKey = await importPublicKey(receiverPublicKeyPem);
+    return await window.crypto.subtle.encrypt(
+        { name: 'RSA-OAEP' },
+        publicKey,
+        sessionKeyBuffer
+    );
+}
+
+// Hàm tạo metadata
+function createMetadata(file) {
+    return {
+        filename: file.name,
+        timestamp: new Date().toISOString(),
+        filetype: file.type
+    };
+}
+
+// Hàm ký metadata
+async function signMetadata(metadata, privateKeyPem) {
+    const privateKey = await importPrivateKey(privateKeyPem);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(metadata));
+    const signature = await window.crypto.subtle.sign(
+        {
+            name: 'RSASSA-PKCS1-v1_5',
+        },
+        privateKey,
+        data
+    );
+    // Trả về base64 signature
+    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+// Gửi file kèm metadata và chữ ký
+const sendFileForm = document.getElementById('send-file-form');
+sendFileForm.onsubmit = async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('file');
+    const privateKeyInput = document.getElementById('private_key');
+    const receiverInput = document.getElementById('receiver_username');
+    const resultDiv = document.getElementById('send-file-result');
+    if (!fileInput.files[0] || !privateKeyInput.value.trim() || !receiverInput.value.trim()) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Vui lòng nhập đủ thông tin!</div>';
+        return;
+    }
+    const file = fileInput.files[0];
+    const privateKeyPem = privateKeyInput.value.trim();
+    const receiver = receiverInput.value.trim();
+    // Tạo metadata
+    const metadata = createMetadata(file);
+    // Ký metadata
+    let signature = '';
+    try {
+        signature = await signMetadata(metadata, privateKeyPem);
+    } catch (err) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi ký metadata: ' + err + '</div>';
+        return;
+    }
+    // Gửi lên server
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('receiver_username', receiver);
+    formData.append('metadata', JSON.stringify(metadata));
+    formData.append('signature', signature);
+    resultDiv.innerHTML = '<div class="alert alert-info">Đang gửi file...</div>';
+    try {
+        const response = await fetch('/upload_file', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
+        }
+    } catch (err) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi gửi file!</div>';
+    }
+};
+
+// Nút tự điền private key
+const fillKeyBtn = document.getElementById('fill-private-key');
+if (fillKeyBtn) {
+    fillKeyBtn.onclick = function() {
+        // Lấy private key từ localStorage (giả sử đã lưu sau khi tạo khóa ở đăng nhập)
+        const savedKey = localStorage.getItem('private_key');
+        if (savedKey) {
+            document.getElementById('private_key').value = savedKey;
+            fillKeyBtn.classList.add('btn-success');
+            fillKeyBtn.textContent = 'Đã điền!';
+            setTimeout(() => {
+                fillKeyBtn.classList.remove('btn-success');
+                fillKeyBtn.textContent = 'Tự điền khóa';
+            }, 2000);
+        } else {
+            alert('Không tìm thấy private key trong trình duyệt. Hãy tạo hoặc nhập thủ công!');
+        }
+    }
+}
+
+// Hàm hiển thị private key
+function showPrivateKey() {
+    const key = localStorage.getItem('private_key') || '';
+    document.getElementById('show_private_key').value = key;
+}
+
+let lastSessionKey = null;
+let lastEncryptedSessionKey = null;
+let lastReceiver = null;
+
+// Gửi session key qua WebSocket
+async function sendSessionKeyWS(receiver, encryptedSessionKey) {
+    socket.emit('send_session_key', {
+        sender: currentUsername,
+        receiver: receiver,
+        encrypted_session_key: btoa(String.fromCharCode(...new Uint8Array(encryptedSessionKey)))
+    });
+}
+
+// Xử lý nút tạo & gửi session key
+const genSessionKeyBtn = document.getElementById('gen-session-key');
+const sessionKeyStatus = document.getElementById('session-key-status');
+genSessionKeyBtn.onclick = async function() {
+    const receiver = document.getElementById('receiver_username').value.trim();
+    if (!receiver) {
+        sessionKeyStatus.style.display = 'block';
+        sessionKeyStatus.className = 'alert alert-danger';
+        sessionKeyStatus.innerText = 'Vui lòng nhập tên người nhận!';
+        return;
+    }
+    sessionKeyStatus.style.display = 'block';
+    sessionKeyStatus.className = 'alert alert-info';
+    sessionKeyStatus.innerText = 'Đang lấy public key người nhận...';
+    // Lấy public key người nhận từ API
+    let receiverPublicKey = '';
+    try {
+        const res = await fetch(`/api/public_key/${encodeURIComponent(receiver)}`);
+        const data = await res.json();
+        if (data.status === 'success') {
+            receiverPublicKey = data.public_key;
+        } else {
+            sessionKeyStatus.className = 'alert alert-danger';
+            sessionKeyStatus.innerText = 'Không tìm thấy public key người nhận!';
+            return;
+        }
+    } catch (err) {
+        sessionKeyStatus.className = 'alert alert-danger';
+        sessionKeyStatus.innerText = 'Lỗi lấy public key người nhận!';
+        return;
+    }
+    sessionKeyStatus.innerText = 'Đang sinh session key...';
+    // Sinh session key
+    let sessionKey;
+    try {
+        sessionKey = await generateSessionKey();
+    } catch (err) {
+        sessionKeyStatus.className = 'alert alert-danger';
+        sessionKeyStatus.innerText = 'Lỗi sinh session key!';
+        return;
+    }
+    // Export session key ra buffer
+    const sessionKeyBuffer = await exportSessionKey(sessionKey);
+    // Mã hóa session key bằng public key người nhận
+    let encryptedSessionKey;
+    try {
+        encryptedSessionKey = await encryptSessionKey(sessionKeyBuffer, receiverPublicKey);
+    } catch (err) {
+        sessionKeyStatus.className = 'alert alert-danger';
+        sessionKeyStatus.innerText = 'Lỗi mã hóa session key!';
+        return;
+    }
+    // Lưu lại session key cho bước mã hóa file
+    lastSessionKey = sessionKey;
+    lastEncryptedSessionKey = encryptedSessionKey;
+    lastReceiver = receiver;
+    // Gửi session key đã mã hóa qua WebSocket
+    sendSessionKeyWS(receiver, encryptedSessionKey);
+    sessionKeyStatus.className = 'alert alert-success';
+    sessionKeyStatus.innerText = 'Đã gửi session key thành công!';
+};
+
+// Hàm mã hóa file bằng session key (AES-GCM)
+async function encryptFileWithSessionKey(file, sessionKey) {
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const fileBuffer = await file.arrayBuffer();
+    const encrypted = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        sessionKey,
+        fileBuffer
+    );
+    // Trả về {iv, encrypted}
+    return {iv: Array.from(iv), encrypted: Array.from(new Uint8Array(encrypted))};
+}
+
+// Gửi file mã hóa qua WebSocket
+async function sendFileWS(receiver, filename, encryptedFile, encryptedSessionKey, senderPrivateKey) {
+    socket.emit('send_file_data', {
+        sender: currentUsername,
+        receiver: receiver,
+        filename: filename,
+        encrypted_file: encryptedFile,
+        encrypted_session_key: btoa(String.fromCharCode(...new Uint8Array(encryptedSessionKey))),
+        sender_private_key: senderPrivateKey
+    });
+}
+
+// Gửi file kèm session key và private key qua WebSocket
+sendFileForm.onsubmit = async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('file');
+    const privateKeyInput = document.getElementById('private_key');
+    const receiverInput = document.getElementById('receiver_username');
+    const resultDiv = document.getElementById('send-file-result');
+    if (!fileInput.files[0] || !privateKeyInput.value.trim() || !receiverInput.value.trim()) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Vui lòng nhập đủ thông tin!';
+        return;
+    }
+    const file = fileInput.files[0];
+    const privateKeyPem = privateKeyInput.value.trim();
+    const receiver = receiverInput.value.trim();
+    if (!lastSessionKey || !lastEncryptedSessionKey || lastReceiver !== receiver) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Bạn cần tạo và gửi session key trước khi gửi file!';
+        return;
+    }
+    resultDiv.innerHTML = '<div class="alert alert-info">Đang mã hóa và gửi file...';
+    // Mã hóa file bằng session key
+    let encryptedFileObj;
+    try {
+        encryptedFileObj = await encryptFileWithSessionKey(file, lastSessionKey);
+    } catch (err) {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi mã hóa file!';
+        return;
+    }
+    // Gửi file mã hóa, session key mã hóa, private key qua WebSocket
+    sendFileWS(receiver, file.name, encryptedFileObj, lastEncryptedSessionKey, privateKeyPem);
+    resultDiv.innerHTML = '<div class="alert alert-success">Đã gửi file mã hóa thành công!';
+};
+</script>
+{% endblock %}
