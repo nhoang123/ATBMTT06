@@ -1,7 +1,23 @@
-Flask
-python-dotenv
-pycryptodome
-websockets
-Flask-SocketIO
-flask_sqlalchemy
-flask_login
+# Core Flask dependencies
+Flask==2.3.3
+python-dotenv==1.0.0
+
+# Database & Authentication
+Flask-SQLAlchemy==3.0.5
+Flask-Login==0.6.3
+
+# Forms & Validation
+Flask-WTF==1.1.1
+WTForms==3.0.1
+
+# WebSocket & Real-time communication
+Flask-SocketIO==5.3.6
+websockets==11.0.3
+python-socketio==5.8.0
+
+# Cryptography libraries
+pycryptodome==3.18.0
+cryptography==41.0.7
+
+# Security & Hashing
+Werkzeug==2.3.7
