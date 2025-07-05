@@ -10,6 +10,11 @@
                         <div class="form-group mb-3">
                             <label for="private_key">Nhập khóa riêng (RSA Private Key, PEM):</label>
                             <textarea class="form-control" id="private_key" name="private_key" rows="8" required></textarea>
+                            {% if form and form.private_key.errors %}
+                                {% for error in form.private_key.errors %}
+                                    <div class="alert alert-danger fade-in">{{ error }}</div>
+                                {% endfor %}
+                            {% endif %}
                         </div>
                         <button type="submit" class="btn btn-primary">Đăng ký khóa</button>
                     </form>

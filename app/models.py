@@ -7,6 +7,16 @@ from cryptography.hazmat.backends import default_backend
 
 db = SQLAlchemy()
 
+class FileHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False)  # người gửi hoặc nhận
+    role = db.Column(db.String(10), nullable=False)      # 'sender' hoặc 'receiver'
+    filename = db.Column(db.String(255), nullable=False)
+    peer = db.Column(db.String(80), nullable=False)      # người nhận hoặc gửi
+    status = db.Column(db.String(20), nullable=False)    # success/error
+    time = db.Column(db.String(50), nullable=False)
+    error = db.Column(db.Text, nullable=True)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -48,3 +58,11 @@ class User(UserMixin, db.Model):
     def verify_private_key(self, private_key):
         """Verify if provided private key matches stored hash"""
         return check_password_hash(self.private_key_hash, private_key)
+
+class UserSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False)
+    sid = db.Column(db.String(128), nullable=False)
+    login_time = db.Column(db.DateTime, nullable=False)
+    last_active = db.Column(db.DateTime, nullable=False)
+    online = db.Column(db.Boolean, default=True)

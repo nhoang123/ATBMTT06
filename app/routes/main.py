@@ -6,9 +6,10 @@ from pathlib import Path
 from flask_login import login_required, current_user
 from app.services.websocket_server import start_secure_server
 from app.services.websocket_client import SecureFileClient
-from app.models import db, User
+from app.models import db, User, FileHistory, UserSession
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+from datetime import datetime
 
 main = Blueprint('main', __name__)
 
@@ -290,3 +291,68 @@ Mã hash: [Sẽ được tạo tự động]
             'status': 'error',
             'message': f'Lỗi tạo file test: {str(e)}'
         })
+
+@main.route('/api/file_history', methods=['POST', 'GET'])
+@login_required
+def file_history():
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        role = data.get('role')
+        filename = data.get('filename')
+        peer = data.get('peer')
+        status = data.get('status')
+        time = data.get('time')
+        error = data.get('error', None)
+        if not all([username, role, filename, peer, status, time]):
+            return jsonify({'status': 'error', 'message': 'Thiếu thông tin lịch sử file!'}), 400
+        entry = FileHistory(
+            username=username,
+            role=role,
+            filename=filename,
+            peer=peer,
+            status=status,
+            time=time,
+            error=error
+        )
+        db.session.add(entry)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Đã lưu lịch sử file!'})
+    else:
+        # GET: lấy lịch sử gửi/nhận file của user hiện tại
+        role = request.args.get('role')  # 'sender' hoặc 'receiver'
+        q = FileHistory.query.filter_by(username=current_user.username)
+        if role:
+            q = q.filter_by(role=role)
+        q = q.order_by(FileHistory.id.desc()).limit(50)
+        result = [
+            {
+                'filename': h.filename,
+                'peer': h.peer,
+                'status': h.status,
+                'time': h.time,
+                'error': h.error
+            } for h in q
+        ]
+        return jsonify({'status': 'success', 'history': result})
+
+@main.route('/api/session_status')
+def session_status():
+    username = request.args.get('username')
+    # Cleanup session timeout trước khi trả kết quả
+    from app.ws import cleanup_sessions
+    cleanup_sessions(timeout_minutes=60)
+    q = UserSession.query
+    if username:
+        q = q.filter_by(username=username)
+    q = q.order_by(UserSession.last_active.desc())
+    result = [
+        {
+            'username': s.username,
+            'sid': s.sid,
+            'login_time': s.login_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'last_active': s.last_active.strftime('%Y-%m-%d %H:%M:%S'),
+            'online': s.online
+        } for s in q
+    ]
+    return jsonify({'status': 'success', 'sessions': result})

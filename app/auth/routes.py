@@ -3,7 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from urllib.parse import urlparse
 from app import db
 from app.models import User
-from app.forms import RegistrationForm, LoginForm
+from app.forms import RegistrationForm, LoginForm, ChangePasswordForm, ChangeKeyForm
 from . import bp
 
 @bp.route('/register', methods=['GET', 'POST'])
@@ -57,3 +57,30 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('main.index'))
+
+@bp.route('/change_password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    form = ChangePasswordForm()
+    if form.validate_on_submit():
+        if not current_user.check_password(form.old_password.data):
+            flash('Mật khẩu cũ không đúng!', 'danger')
+        else:
+            current_user.set_password(form.new_password.data)
+            db.session.commit()
+            flash('Đổi mật khẩu thành công!', 'success')
+            return redirect(url_for('main.index'))
+    return render_template('auth/change_password.html', title='Đổi mật khẩu', form=form)
+
+@bp.route('/change_key', methods=['GET', 'POST'])
+@login_required
+def change_key():
+    form = ChangeKeyForm()
+    if form.validate_on_submit():
+        if not current_user.set_private_key(form.private_key.data):
+            flash('Private key không hợp lệ!', 'danger')
+        else:
+            db.session.commit()
+            flash('Đổi khóa thành công!', 'success')
+            return redirect(url_for('main.index'))
+    return render_template('auth/change_key.html', title='Đổi khóa', form=form)
