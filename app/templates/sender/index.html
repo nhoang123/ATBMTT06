@@ -23,7 +23,7 @@
                 <input type="text" class="form-control" id="receiver_username" name="receiver_username" placeholder="Nhập username người nhận" required>
                 <div class="mt-2" id="receiver-status"></div>
             </div>
-            <button id="start-handshake" class="btn btn-warning mb-2"><i class="bi bi-link-45deg"></i> Bắt đầu handshake</button>
+            <button id="start-handshake" class="btn btn-warning mb-2" disabled><i class="bi bi-link-45deg"></i> Bắt đầu handshake</button>
             <div id="handshake-status" class="alert alert-secondary" style="display:none;"></div>
         </div>
         <div class="section">
@@ -122,7 +122,19 @@ let socket = io();
 socket.on('connect', function() {
     const username = getSenderUsername();
     if (username) {
-        socket.emit('register_username', {username: username});
+        emitRegisterUsername();
+        console.log('[Socket] Kết nối lại, tự động đăng ký username:', username);
+    } else {
+        console.warn('[Socket] Kết nối nhưng chưa nhập username!');
+    }
+});
+socket.on('reconnect', function() {
+    const username = getSenderUsername();
+    if (username) {
+        emitRegisterUsername();
+        console.log('[Socket] Reconnect, tự động đăng ký lại username:', username);
+    } else {
+        console.warn('[Socket] Reconnect nhưng chưa nhập username!');
     }
 });
 
@@ -183,12 +195,42 @@ function updateStepStatusSend(step, status, message) {
 }
 
 // --- Handshake ---
-let handshakeTimeout = null;
-let handshakeInProgress = false;
+// Đảm bảo chỉ khai báo 1 lần ở đầu file/script
+if (typeof handshakeTimeout === 'undefined') {
+    var handshakeTimeout = null;
+}
+if (typeof handshakeInProgress === 'undefined') {
+    var handshakeInProgress = false;
+}
 
+
+// Đảm bảo handshake chỉ gửi khi socket đã connect và username đã đăng ký
 handshakeBtn.onclick = function() {
-    updateStepStatusSend('handshake', 'processing', 'Đang handshake...');
-    const receiver = document.getElementById('receiver_username').value.trim();
+    console.log('[DEBUG] handshakeBtn clicked');
+    if (handshakeBtn.disabled) {
+        console.warn('[DEBUG] handshakeBtn is disabled');
+        return;
+    }
+    const currentUsername = getSenderUsername();
+    console.log('[DEBUG] currentUsername:', currentUsername);
+    if (!currentUsername) {
+        handshakeStatus.style.display = 'block';
+        showAlert(handshakeStatus, 'danger', 'Bạn chưa nhập hoặc lưu username người gửi!');
+        console.warn('[Handshake] Không có username người gửi!');
+        return;
+    }
+    if (!socket) {
+        console.error('[DEBUG] socket is undefined');
+        showAlert(handshakeStatus, 'danger', 'Socket chưa khởi tạo!');
+        return;
+    }
+    if (!socket.connected) {
+        showAlert(handshakeStatus, 'danger', 'Kết nối tới server bị gián đoạn. Vui lòng thử lại!');
+        console.warn('[Handshake] Socket chưa kết nối!');
+        return;
+    }
+    const receiver = getReceiverInputUsername();
+    console.log('[DEBUG] receiver:', receiver);
     if (!receiver) {
         handshakeStatus.style.display = 'block';
         showAlert(handshakeStatus, 'danger', 'Vui lòng nhập tên người nhận!');
@@ -196,14 +238,13 @@ handshakeBtn.onclick = function() {
     }
     handshakeStatus.style.display = 'block';
     showAlert(handshakeStatus, 'info', 'Đang gửi bắt tay...');
-    console.log('[Handshake] Gửi handshake_hello tới', receiver);
+    console.log('[Handshake] Gửi handshake_hello tới', receiver, 'từ', currentUsername);
     socket.emit('handshake_hello', {
         sender: currentUsername,
         receiver: receiver,
         message: 'Hello'
     });
     handshakeInProgress = true;
-    // Timeout nếu không nhận được phản hồi
     if (handshakeTimeout) clearTimeout(handshakeTimeout);
     handshakeTimeout = setTimeout(() => {
         if (handshakeInProgress) {
@@ -214,10 +255,15 @@ handshakeBtn.onclick = function() {
         }
     }, 5000);
 };
+// Log khi nhận handshake_ready
 socket.on('handshake_ready', function(data) {
     console.log('[Handshake] Nhận handshake_ready:', data);
     handshakeStatus.style.display = 'block';
-    showAlert(handshakeStatus, 'success', data.message);
+    // Phân biệt phản hồi handshake chủ động hay reply từ receiver
+    let infoMsg = data && data.sender && data.receiver
+        ? `Phản hồi bắt tay từ <b>${data.sender}</b> tới <b>${data.receiver}</b>: ${data.message}`
+        : data.message;
+    showAlert(handshakeStatus, 'success', infoMsg);
     updateStepStatusSend('handshake', 'done', 'Handshake thành công!');
     handshakeInProgress = false;
     if (handshakeTimeout) clearTimeout(handshakeTimeout);
@@ -347,7 +393,7 @@ async function sendSessionKeyWS(receiver, encryptedSessionKey) {
     });
 }
 genSessionKeyBtn.onclick = async function() {
-    const receiver = document.getElementById('receiver_username').value.trim();
+    const receiver = getReceiverInputUsername();
     if (!receiver) {
         sessionKeyStatus.style.display = 'block';
         showAlert(sessionKeyStatus, 'danger', 'Vui lòng nhập tên người nhận!');
@@ -440,6 +486,14 @@ socket.on('file_status_notify', function(data) {
     setTimeout(() => { fileStatusDiv.innerHTML = ''; }, 6000);
 });
 
+// --- Hiển thị alert trạng thái cho các bước
+function showAlert(target, type, message) {
+    target.innerHTML = `<div class="alert alert-${type} fade-in d-flex align-items-center" role="alert">
+        ${type === 'info' ? '<span class="spinner-border spinner-border-sm me-2"></span>' : ''}
+        <div>${message}</div>
+    </div>`;
+}
+
 // --- Gửi file bảo mật (nén, mã hóa, hash, ký, gửi) ---
 sendFileForm.onsubmit = async function(e) {
     e.preventDefault();
@@ -526,8 +580,12 @@ sendFileForm.onsubmit = async function(e) {
     renderSendHistory();
 };
 
+function getReceiverInputUsername() {
+    return (document.getElementById('receiver_username').value || '').trim().toLowerCase();
+}
+
 async function updateReceiverStatus() {
-    const username = document.getElementById('receiver_username').value.trim();
+    const username = getReceiverInputUsername();
     const statusDiv = document.getElementById('receiver-status');
     if (!username) {
         statusDiv.innerHTML = '';
@@ -553,12 +611,36 @@ async function updateReceiverStatus() {
 }
 document.getElementById('receiver_username').addEventListener('input', function() {
     updateReceiverStatus();
+    // Enable/disable handshake button tuỳ theo trạng thái
+    const receiver = getReceiverInputUsername();
+    const handshakeBtn = document.getElementById('start-handshake');
+    if (!receiver) {
+        handshakeBtn.disabled = true;
+    } else {
+        handshakeBtn.disabled = false;
+    }
 });
 window.addEventListener('DOMContentLoaded', function() {
     updateReceiverStatus();
+    // Đảm bảo trạng thái nút handshake đúng khi load lại
+    const receiver = getReceiverInputUsername();
+    const handshakeBtn = document.getElementById('start-handshake');
+    if (!receiver) {
+        handshakeBtn.disabled = true;
+    } else {
+        handshakeBtn.disabled = false;
+    }
 });
 
-// --- Tách biệt username sender bằng localStorage ---
+// --- Username logic ---
+function getSenderUsername() {
+    // Lấy username từ localStorage hoặc input
+    const val = (localStorage.getItem('sender_username') || document.getElementById('sender-username-input').value || '').trim().toLowerCase();
+    return val;
+}
+function setSenderUsername(username) {
+    localStorage.setItem('sender_username', username.trim().toLowerCase());
+}
 function showSenderLogin() {
     document.getElementById('sender-login-section').style.display = 'block';
     document.getElementById('sender-username-display').style.display = 'none';
@@ -568,37 +650,118 @@ function showSenderUsername(username) {
     document.getElementById('sender-login-section').style.display = 'none';
     document.getElementById('sender-username-display').style.display = 'block';
 }
-function getSenderUsername() {
-    return localStorage.getItem('sender_username') || '';
-}
-function setSenderUsername(username) {
-    localStorage.setItem('sender_username', username);
-}
 // Khởi tạo username khi load trang
 window.addEventListener('DOMContentLoaded', function() {
     const saved = getSenderUsername();
     if (saved) {
         showSenderUsername(saved);
+        emitRegisterUsername();
         window.currentUsername = saved;
-        if (typeof socket !== 'undefined' && socket.connected) {
-            socket.emit('register_username', {username: saved});
-        }
     } else {
         showSenderLogin();
     }
 });
-document.getElementById('save-sender-username').onclick = function() {
-    const val = document.getElementById('sender-username-input').value.trim();
-    if (!val) { alert('Vui lòng nhập username!'); return; }
-    setSenderUsername(val);
-    showSenderUsername(val);
-    window.currentUsername = val;
-    if (typeof socket !== 'undefined' && socket.connected) {
-        socket.emit('register_username', {username: val});
-    }
-};
+// Đảm bảo khi lưu username gửi thì luôn cập nhật localStorage và hiển thị lại
+if (document.getElementById('save-sender-username')) {
+    document.getElementById('save-sender-username').onclick = function() {
+        const val = document.getElementById('sender-username-input').value.trim().toLowerCase();
+        if (!val) { alert('Vui lòng nhập username!'); return; }
+        setSenderUsername(val);
+        showSenderUsername(val);
+        window.currentUsername = val;
+        emitRegisterUsername();
+        console.log('[UI] Đã lưu và đăng ký lại username:', val);
+    };
+}
 document.getElementById('change-sender-username').onclick = function() {
     showSenderLogin();
+    setTimeout(() => {
+        document.getElementById('sender-username-input').focus();
+    }, 100);
 };
+function emitRegisterUsername() {
+    const username = getSenderUsername();
+    if (username && typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('register_username', {username: username});
+        console.log('[Socket] Đã gửi register_username:', username);
+    } else {
+        console.warn('[Socket] Chưa có username hoặc socket chưa kết nối!');
+    }
+}
+socket.on('connect', function() {
+    const username = getSenderUsername();
+    if (username) {
+        emitRegisterUsername();
+        console.log('[Socket] Kết nối lại, tự động đăng ký username:', username);
+    } else {
+        console.warn('[Socket] Kết nối nhưng chưa nhập username!');
+    }
+});
+socket.on('reconnect', function() {
+    const username = getSenderUsername();
+    if (username) {
+        emitRegisterUsername();
+        console.log('[Socket] Reconnect, tự động đăng ký lại username:', username);
+    } else {
+        console.warn('[Socket] Reconnect nhưng chưa nhập username!');
+    }
+});
+
+// --- Handshake ---
+// Đảm bảo chỉ khai báo 1 lần ở đầu file/script
+if (typeof handshakeTimeout === 'undefined') {
+    var handshakeTimeout = null;
+}
+if (typeof handshakeInProgress === 'undefined') {
+    var handshakeInProgress = false;
+}
+
+handshakeBtn.onclick = function() {
+    console.log('[DEBUG] handshakeBtn clicked');
+    if (handshakeBtn.disabled) {
+        console.warn('[DEBUG] handshakeBtn is disabled');
+        return;
+    }
+    // Lấy username động nhất
+    const currentUsername = getSenderUsername();
+    updateStepStatusSend('handshake', 'processing', 'Đang handshake...');
+    const receiver = getReceiverInputUsername();
+    if (!receiver) {
+        handshakeStatus.style.display = 'block';
+        showAlert(handshakeStatus, 'danger', 'Vui lòng nhập tên người nhận!');
+        return;
+    }
+    handshakeStatus.style.display = 'block';
+    showAlert(handshakeStatus, 'info', 'Đang gửi bắt tay...');
+    console.log('[Handshake] Gửi handshake_hello tới', receiver, 'từ', currentUsername);
+    socket.emit('handshake_hello', {
+        sender: currentUsername,
+        receiver: receiver,
+        message: 'Hello'
+    });
+    handshakeInProgress = true;
+    // Timeout nếu không nhận được phản hồi
+    if (handshakeTimeout) clearTimeout(handshakeTimeout);
+    handshakeTimeout = setTimeout(() => {
+        if (handshakeInProgress) {
+            handshakeStatus.style.display = 'block';
+            showAlert(handshakeStatus, 'danger', 'Không nhận được phản hồi handshake từ người nhận. Vui lòng kiểm tra lại trạng thái online hoặc thử lại!');
+            updateStepStatusSend('handshake', 'error', 'Handshake thất bại!');
+            handshakeInProgress = false;
+        }
+    }, 5000);
+};
+socket.on('handshake_ready', function(data) {
+    console.log('[Handshake] Nhận handshake_ready:', data);
+    handshakeStatus.style.display = 'block';
+    // Phân biệt phản hồi handshake chủ động hay reply từ receiver
+    let infoMsg = data && data.sender && data.receiver
+        ? `Phản hồi bắt tay từ <b>${data.sender}</b> tới <b>${data.receiver}</b>: ${data.message}`
+        : data.message;
+    showAlert(handshakeStatus, 'success', infoMsg);
+    updateStepStatusSend('handshake', 'done', 'Handshake thành công!');
+    handshakeInProgress = false;
+    if (handshakeTimeout) clearTimeout(handshakeTimeout);
+});
 </script>
-{% endblock %}
+{% endblock content %}

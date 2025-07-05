@@ -12,6 +12,7 @@ user_sid_map = {}
 def register_username(data):
     username = data.get('username')
     if username:
+        username = username.strip().lower()  # Đảm bảo luôn lưu chữ thường
         user_sid_map[username] = request.sid
         logging.info(f'[SOCKET] Đăng ký user_sid_map: {user_sid_map}')
         # Lưu session vào DB
@@ -47,39 +48,40 @@ def cleanup_sessions(timeout_minutes=60):
 
 @socketio.on('handshake_hello')
 def handle_handshake_hello(data):
-    # data: {sender, receiver, message}
     sender = data.get('sender')
     receiver = data.get('receiver')
     message = data.get('message')
     logging.info(f'[SOCKET] Nhận handshake_hello: {data}')
-    # Gửi tới receiver nếu đang online
-    if receiver in user_sid_map:
-        logging.info(f'[SOCKET] Emit handshake_hello tới {receiver} (sid={user_sid_map[receiver]})')
+    logging.info(f'[SOCKET] user_sid_map hiện tại: {user_sid_map}')
+    # Đảm bảo so sánh chữ thường
+    receiver_key = receiver.strip().lower() if receiver else ''
+    if receiver_key in user_sid_map:
+        logging.info(f'[SOCKET] Emit handshake_hello tới {receiver_key} (sid={user_sid_map[receiver_key]})')
         emit('handshake_hello', {
-            'message': f"Hello: {receiver} Tôi là: {sender}",
+            'message': f"Hello: {receiver_key} Tôi là: {sender}",
             'sender': sender,
-            'receiver': receiver
-        }, room=user_sid_map[receiver])
+            'receiver': receiver_key
+        }, room=user_sid_map[receiver_key])
     else:
-        logging.warning(f'[SOCKET] Không tìm thấy receiver {receiver} trong user_sid_map khi handshake_hello')
+        logging.warning(f'[SOCKET] Không tìm thấy receiver {receiver_key} trong user_sid_map khi handshake_hello. user_sid_map keys: {list(user_sid_map.keys())}')
 
 @socketio.on('handshake_ready')
 def handle_handshake_ready(data):
-    # data: {sender, receiver, message}
     sender = data.get('sender')  # người nhận
     receiver = data.get('receiver')  # người gửi
     message = data.get('message')
     logging.info(f'[SOCKET] Nhận handshake_ready: {data}')
-    # Gửi lại cho người gửi
-    if receiver in user_sid_map:
-        logging.info(f'[SOCKET] Emit handshake_ready tới {receiver} (sid={user_sid_map[receiver]})')
+    logging.info(f'[SOCKET] user_sid_map hiện tại: {user_sid_map}')
+    receiver_key = receiver.strip().lower() if receiver else ''
+    if receiver_key in user_sid_map:
+        logging.info(f'[SOCKET] Emit handshake_ready tới {receiver_key} (sid={user_sid_map[receiver_key]})')
         emit('handshake_ready', {
-            'message': f"Hi: {receiver} tôi đã sẵn sàng!",
+            'message': f"Hi: {receiver_key} Tôi là: {sender} đã sẵn sàng!",
             'sender': sender,
-            'receiver': receiver
-        }, room=user_sid_map[receiver])
+            'receiver': receiver_key
+        }, room=user_sid_map[receiver_key])
     else:
-        logging.warning(f'[SOCKET] Không tìm thấy receiver {receiver} trong user_sid_map khi handshake_ready')
+        logging.warning(f'[SOCKET] Không tìm thấy receiver {receiver_key} trong user_sid_map khi handshake_ready. user_sid_map keys: {list(user_sid_map.keys())}')
 
 @socketio.on('send_session_key')
 def ws_send_session_key(data):

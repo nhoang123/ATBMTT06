@@ -1,9 +1,22 @@
-from flask import render_template
+from flask import render_template, session, redirect, url_for, request
 from flask_login import login_required, current_user
 from app.sender import sender_bp
+from functools import wraps
+
+def sender_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or session.get('user_type') != 'sender':
+            return redirect(url_for('auth.login', next=request.url, user_type='sender'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@sender_bp.before_request
+def before_request():
+    session['user_type'] = 'sender'
 
 @sender_bp.route('/sender')
-@login_required
+@sender_login_required
 def sender_index():
     # Lấy thông tin chi tiết tài khoản
     user_info = {

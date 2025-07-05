@@ -98,16 +98,33 @@
 <script>
 const currentUsername = "{{ current_username }}";
 let socket = io();
+function emitRegisterUsername() {
+    const username = getReceiverUsername();
+    if (username && typeof socket !== 'undefined' && socket.connected) {
+        socket.emit('register_username', {username: username});
+        console.log('[Socket] Đã gửi register_username:', username);
+    } else {
+        console.warn('[Socket] Chưa có username hoặc socket chưa kết nối!');
+    }
+}
 socket.on('connect', function() {
     const username = getReceiverUsername();
     if (username) {
-        socket.emit('register_username', {username: username});
+        emitRegisterUsername();
+        console.log('[Socket] Kết nối lại, tự động đăng ký username:', username);
+    } else {
+        console.warn('[Socket] Kết nối nhưng chưa nhập username!');
     }
 });
-
-const handshakeMessage = document.getElementById('handshake-message');
-const handshakeStatus = document.getElementById('handshake-status');
-const replyBtn = document.getElementById('reply-handshake');
+socket.on('reconnect', function() {
+    const username = getReceiverUsername();
+    if (username) {
+        emitRegisterUsername();
+        console.log('[Socket] Reconnect, tự động đăng ký lại username:', username);
+    } else {
+        console.warn('[Socket] Reconnect nhưng chưa nhập username!');
+    }
+});
 
 // Nhận handshake_hello từ người gửi
 socket.on('handshake_hello', function(data) {
@@ -119,14 +136,19 @@ socket.on('handshake_hello', function(data) {
     replyBtn.dataset.sender = data.sender;
 });
 
+const handshakeMessage = document.getElementById('handshake-message');
+const handshakeStatus = document.getElementById('handshake-status');
+const replyBtn = document.getElementById('reply-handshake');
+
 replyBtn.onclick = function() {
     const sender = replyBtn.dataset.sender;
+    const currentUsername = getReceiverUsername(); // lấy động
     if (!sender) return;
-    console.log('[Handshake] Gửi handshake_ready tới', sender);
+    console.log('[Handshake] Gửi handshake_ready tới', sender, 'từ', currentUsername);
     socket.emit('handshake_ready', {
         sender: currentUsername, // người nhận
         receiver: sender,        // người gửi
-        message: 'Ready'
+        message: `Hi: ${sender} Tôi là: ${currentUsername} đã sẵn sàng!`
     });
     handshakeStatus.style.display = 'block';
     handshakeStatus.className = 'alert alert-info';
@@ -203,7 +225,15 @@ function showPrivateKey() {
     document.getElementById('show_private_key').value = key;
 }
 
-// --- Tách biệt username receiver bằng localStorage ---
+// --- Username logic ---
+function getReceiverUsername() {
+    // Lấy username từ localStorage hoặc input
+    const val = (localStorage.getItem('receiver_username') || document.getElementById('receiver-username-input').value || '').trim().toLowerCase();
+    return val;
+}
+function setReceiverUsername(username) {
+    localStorage.setItem('receiver_username', username.trim().toLowerCase());
+}
 function showReceiverLogin() {
     document.getElementById('receiver-login-section').style.display = 'block';
     document.getElementById('receiver-username-display').style.display = 'none';
@@ -213,37 +243,31 @@ function showReceiverUsername(username) {
     document.getElementById('receiver-login-section').style.display = 'none';
     document.getElementById('receiver-username-display').style.display = 'block';
 }
-function getReceiverUsername() {
-    return localStorage.getItem('receiver_username') || '';
-}
-function setReceiverUsername(username) {
-    localStorage.setItem('receiver_username', username);
-}
 // Khởi tạo username khi load trang
 window.addEventListener('DOMContentLoaded', function() {
     const saved = getReceiverUsername();
     if (saved) {
         showReceiverUsername(saved);
+        emitRegisterUsername();
         window.currentUsername = saved;
-        if (typeof socket !== 'undefined' && socket.connected) {
-            socket.emit('register_username', {username: saved});
-        }
     } else {
         showReceiverLogin();
     }
 });
 document.getElementById('save-receiver-username').onclick = function() {
-    const val = document.getElementById('receiver-username-input').value.trim();
+    const val = document.getElementById('receiver-username-input').value.trim().toLowerCase();
     if (!val) { alert('Vui lòng nhập username!'); return; }
     setReceiverUsername(val);
     showReceiverUsername(val);
     window.currentUsername = val;
-    if (typeof socket !== 'undefined' && socket.connected) {
-        socket.emit('register_username', {username: val});
-    }
+    emitRegisterUsername();
+    console.log('[UI] Đã lưu và đăng ký lại username:', val);
 };
 document.getElementById('change-receiver-username').onclick = function() {
     showReceiverLogin();
+    setTimeout(() => {
+        document.getElementById('receiver-username-input').focus();
+    }, 100);
 };
 
 // Hàm hỗ trợ: chuyển PEM private key -> CryptoKey

@@ -1,4 +1,4 @@
-from flask import render_template, flash, redirect, url_for, request, jsonify
+from flask import render_template, flash, redirect, url_for, request, jsonify, session
 from flask_login import login_user, logout_user, login_required, current_user
 from urllib.parse import urlparse
 from app import db
@@ -35,6 +35,11 @@ def register():
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
+        user_type = session.get('user_type')
+        if user_type == 'sender':
+            return redirect(url_for('sender.sender_index'))
+        elif user_type == 'receiver':
+            return redirect(url_for('receiver.receiver_index'))
         return redirect(url_for('main.index'))
     
     form = LoginForm()
@@ -44,10 +49,20 @@ def login():
             flash('Invalid username or password', 'error')
             return redirect(url_for('auth.login'))
         
-        login_user(user)
+        # Set user type in session based on next URL
         next_page = request.args.get('next')
+        user_type = request.args.get('user_type')
+        if user_type in ['sender', 'receiver']:
+            session['user_type'] = user_type
+        
+        login_user(user)
         if not next_page or urlparse(next_page).netloc != '':
-            next_page = url_for('main.index')
+            if user_type == 'sender':
+                next_page = url_for('sender.sender_index')
+            elif user_type == 'receiver':
+                next_page = url_for('receiver.receiver_index')
+            else:
+                next_page = url_for('main.index')
         return redirect(next_page)
         
     return render_template('auth/login.html', title='Login', form=form)
@@ -55,8 +70,11 @@ def login():
 @bp.route('/logout')
 @login_required
 def logout():
+    user_type = session.get('user_type')
     logout_user()
-    return redirect(url_for('main.index'))
+    session.pop('user_type', None)
+    flash('Successfully logged out', 'success')
+    return redirect(url_for('auth.login', user_type=user_type))
 
 @bp.route('/change_password', methods=['GET', 'POST'])
 @login_required

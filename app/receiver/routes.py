@@ -1,12 +1,25 @@
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, session, redirect, url_for
 from flask_login import login_required, current_user
 from app.receiver import receiver_bp
 from app.models import User
 from app.services.verify_signature import verify_metadata_signature
+from functools import wraps
 import json
 
+def receiver_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or session.get('user_type') != 'receiver':
+            return redirect(url_for('auth.login', next=request.url, user_type='receiver'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@receiver_bp.before_request
+def before_request():
+    session['user_type'] = 'receiver'
+
 @receiver_bp.route('/receiver')
-@login_required
+@receiver_login_required
 def receiver_index():
     user_info = {
         'username': current_user.username,
@@ -15,7 +28,7 @@ def receiver_index():
     return render_template('receiver/index.html', title='Nhận File (Receiver)', current_username=current_user.username, user_info=user_info)
 
 @receiver_bp.route('/api/verify_metadata', methods=['POST'])
-@login_required
+@receiver_login_required
 def verify_metadata():
     data = request.get_json()
     sender_username = data.get('sender_username')
