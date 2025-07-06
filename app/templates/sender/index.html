@@ -81,9 +81,11 @@
             <h2>🔑 Trao đổi Session Key</h2>
             <button id="gen-session-key" class="btn btn-info mb-2">Tạo & gửi Session Key</button>
             <div id="session-key-status" class="alert alert-secondary" style="display:none;"></div>
+            <div id="session-key-display" class="alert alert-info mt-3" style="display:none;"></div>
         </div>
         <div class="section mb-4">
             <h2>🗂️ Lịch sử gửi file</h2>
+            <button class="btn btn-danger mb-2" id="clear-send-history"><i class="bi bi-trash"></i> Xóa lịch sử gửi file</button>
             <div id="history-send-list">
                 <table class="table table-bordered table-hover">
                     <thead class="table-light">
@@ -362,34 +364,22 @@ async function encryptCompressedFile(compressedData, sessionKey, nonce) {
     return new Uint8Array(encrypted);
 }
 
-// --- Nút tự điền private key ---
-if (fillKeyBtn) {
-    fillKeyBtn.onclick = function() {
-        const savedKey = localStorage.getItem('private_key');
-        if (savedKey) {
-            document.getElementById('private_key').value = savedKey;
-            fillKeyBtn.classList.add('btn-success');
-            fillKeyBtn.textContent = 'Đã điền!';
-            setTimeout(() => {
-                fillKeyBtn.classList.remove('btn-success');
-                fillKeyBtn.textContent = 'Tự điền khóa';
-            }, 2000);
-        } else {
-            alert('Không tìm thấy private key trong trình duyệt. Hãy tạo hoặc nhập thủ công!');
-        }
+// Sửa hàm gửi session key qua socket: luôn gửi base64 chuẩn
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    let bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
     }
+    return window.btoa(binary);
 }
-function showPrivateKey() {
-    const key = localStorage.getItem('private_key') || '';
-    document.getElementById('show_private_key').value = key;
-}
-
-// --- Gửi session key ---
 async function sendSessionKeyWS(receiver, encryptedSessionKey) {
+    const sessionKeyBase64 = arrayBufferToBase64(encryptedSessionKey);
+    console.log('[DEBUG][Sender] sessionKeyBase64 gửi đi:', sessionKeyBase64);
     socket.emit('send_session_key', {
         sender: currentUsername,
         receiver: receiver,
-        encrypted_session_key: btoa(String.fromCharCode(...new Uint8Array(encryptedSessionKey)))
+        encrypted_session_key: sessionKeyBase64
     });
 }
 genSessionKeyBtn.onclick = async function() {
@@ -536,16 +526,31 @@ sendFileForm.onsubmit = async function(e) {
         const ciphertext = await encryptCompressedFile(compressed, lastSessionKey, nonce);
         updateStepStatusSend('encrypt', 'done', 'Đã mã hóa file!');
         updateStepStatusSend('hash', 'processing', 'Đang tính hash...');
-        // Tính hash gồm nonce, ciphertext, expiration (nếu có)
+        // Log debug giá trị trước khi tính hash
+        console.log('[SENDER] nonce:', nonce);
+        console.log('[SENDER] ciphertext:', ciphertext);
+        console.log('[SENDER] expiration:', expiration);
         let hashInputArr = [nonce, ciphertext];
         if (expiration) {
             const expBytes = new TextEncoder().encode(expiration);
             hashInputArr.push(new Uint8Array(expBytes));
+            console.log('[SENDER] expBytes:', expBytes);
         }
         const hashInput = concatUint8Arrays(hashInputArr);
+        console.log('[SENDER] hashInput:', hashInput);
         const hash = await sha512Hash(hashInput);
         updateStepStatusSend('hash', 'done', 'Đã tính hash!');
         updateStepStatusSend('send', 'processing', 'Đang gửi file...');
+        // Kiểm tra nonce và ciphertext trước khi gửi
+        if (!nonce || !ciphertext || !nonce.length || !ciphertext.length) {
+            updateStepStatusSend('encrypt', 'error', 'Lỗi mã hóa: nonce hoặc ciphertext không hợp lệ!');
+            showAlert(resultDiv, 'danger', 'Lỗi: nonce hoặc ciphertext không hợp lệ, không thể gửi file!');
+            return;
+        }
+        // Log debug giá trị gửi đi
+        console.log('[SENDER][DEBUG gửi file]', {
+            nonce, ciphertext, hash, signature, metadata, expiration, encrypted_session_key: arrayBufferToBase64(lastEncryptedSessionKey)
+        });
         socket.emit('send_file_data', {
             sender: currentUsername,
             receiver: receiver,
@@ -555,9 +560,8 @@ sendFileForm.onsubmit = async function(e) {
             hash: hash,
             signature: signature,
             metadata: metadata,
-            expiration: expiration, // gửi kèm expiration
-            encrypted_session_key: btoa(String.fromCharCode(...new Uint8Array(lastEncryptedSessionKey))),
-            sender_private_key: privateKeyPem
+            expiration: expiration,
+            encrypted_session_key: arrayBufferToBase64(lastEncryptedSessionKey)
         });
         updateStepStatusSend('send', 'done', 'Đã gửi file thành công!');
         showAlert(resultDiv, 'success', 'Đã gửi file bảo mật thành công!');
@@ -762,6 +766,25 @@ socket.on('handshake_ready', function(data) {
     updateStepStatusSend('handshake', 'done', 'Handshake thành công!');
     handshakeInProgress = false;
     if (handshakeTimeout) clearTimeout(handshakeTimeout);
+});
+document.addEventListener('DOMContentLoaded', function() {
+    const fillKeyBtn = document.getElementById('fill-private-key');
+    if (fillKeyBtn) {
+        fillKeyBtn.addEventListener('click', function() {
+            // Ưu tiên lấy từ localStorage 'sender_private_key', nếu không có thì lấy 'private_key'
+            let privateKey = localStorage.getItem('sender_private_key') || localStorage.getItem('private_key') || '';
+            if (!privateKey) {
+                alert('Không tìm thấy private key trong trình duyệt!');
+            }
+            document.getElementById('private_key').value = privateKey;
+        });
+    }
+});
+document.getElementById('clear-send-history').addEventListener('click', async function() {
+    if (confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử gửi file?')) {
+        await fetch('/api/file_history?role=sender', { method: 'DELETE' });
+        renderSendHistory();
+    }
 });
 </script>
 {% endblock content %}

@@ -61,6 +61,7 @@
         </div>
         <div class="section mb-4">
             <h2>🗂️ Lịch sử nhận file</h2>
+            <button class="btn btn-danger mb-2" id="clear-receive-history"><i class="bi bi-trash"></i> Xóa lịch sử nhận file</button>
             <div id="history-receive-list">
                 <table class="table table-bordered table-hover">
                     <thead class="table-light">
@@ -91,8 +92,19 @@
                 <li class="list-group-item" id="step-save">6. Lưu file <span class="badge bg-secondary">Chờ</span></li>
             </ul>
         </div>
+        <div class="section mb-4">
+            <h2>🔑 Nhập Private Key để giải mã</h2>
+            <div class="mb-3">
+                <label for="private_key" class="form-label fw-bold">Private Key (PEM)</label>
+                <textarea class="form-control" id="private_key" name="private_key" rows="4" placeholder="Dán private key PEM của bạn tại đây" required></textarea>
+                <button class="btn btn-outline-secondary mt-2" type="button" id="save-private-key">Lưu Private Key</button>
+            </div>
+        </div>
+        <!-- Thêm vùng hiển thị session key nhận được -->
+        <div id="session-key-received" class="alert alert-info mt-3" style="display:none;"></div>
     </div>
 </div>
+{% raw %}
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
@@ -290,6 +302,10 @@ async function importPrivateKey(pem) {
 
 // Hàm giải mã session key bằng private key
 async function decryptSessionKey(encryptedSessionKeyB64, privateKeyPem) {
+    // Kiểm tra base64 hợp lệ
+    if (!isBase64(encryptedSessionKeyB64)) {
+        throw new Error('Session key không đúng định dạng base64!');
+    }
     const privateKey = await importPrivateKey(privateKeyPem);
     const encrypted = Uint8Array.from(atob(encryptedSessionKeyB64), c => c.charCodeAt(0));
     const sessionKeyRaw = await window.crypto.subtle.decrypt(
@@ -379,19 +395,51 @@ function sendAckNack(sender, status, message) {
     });
 }
 
+// Hàm kiểm tra base64
+function isBase64(str) {
+    try {
+        const cleanStr = (str || '').replace(/\s/g, '');
+        return btoa(atob(cleanStr)) === cleanStr;
+    } catch (err) {
+        return false;
+    }
+}
+
+// Đảm bảo lấy đúng vùng hiển thị session key nhận được từ DOM
+const sessionKeyReceivedDiv = document.getElementById('session-key-received');
+
 // Nhận session key từ sender
 let receivedSessionKey = null;
 socket.on('receive_session_key', async function(data) {
+    const encKey = data.encrypted_session_key;
+    // Loại bỏ toàn bộ ký tự trắng/xuống dòng trước khi xử lý
+    const encKeyClean = (encKey || '').replace(/\s/g, '');
+    console.log('[DEBUG][Receiver] sessionKeyBase64 nhận về:', encKey);
+    // Hiển thị session key nhận được và trạng thái định dạng
+    let validMsg = isBase64(encKeyClean) ? '<span class="text-success">✔ Đúng định dạng base64</span>' : '<span class="text-danger">✘ Không đúng định dạng base64</span>';
+    if (sessionKeyReceivedDiv) {
+        sessionKeyReceivedDiv.style.display = 'block';
+        sessionKeyReceivedDiv.innerHTML = `<b>Session Key nhận được (base64):</b><br><textarea class='form-control' rows='3' readonly>${encKey}</textarea><div class='mt-2'>${validMsg}</div>`;
+    } else {
+        alert('Không tìm thấy vùng hiển thị session key!');
+    }
+    if (!isBase64(encKeyClean)) {
+        console.error('[ERROR][Receiver] Session key không đúng định dạng base64! Dữ liệu nhận được:', data);
+        // Bỏ alert, chỉ log lỗi
+        return;
+    }
     const privateKey = localStorage.getItem('private_key') || '';
     if (!privateKey) {
-        alert('Không tìm thấy private key để giải mã session key!');
+        // Bỏ alert, chỉ log lỗi
+        console.error('Không tìm thấy private key để giải mã session key!');
         return;
     }
     try {
-        receivedSessionKey = await decryptSessionKey(data.encrypted_session_key, privateKey);
+        receivedSessionKey = await decryptSessionKey(encKeyClean, privateKey);
         alert('Đã nhận và giải mã session key thành công!');
     } catch (err) {
-        alert('Lỗi giải mã session key: ' + err);
+        // Bỏ alert, chỉ log lỗi
+        console.error('Lỗi giải mã session key:', err);
     }
 });
 
@@ -401,6 +449,42 @@ socket.on('receive_file_data', async function(data) {
     let errorMsg = '';
     try {
         updateStepStatus('receive', 'processing', 'Đang nhận file...');
+        // Log toàn bộ object data nhận được
+        console.log('[RECEIVER][FULL DATA] object:', data);
+        // Hiển thị thông tin người gửi lên giao diện
+        if (data.sender) {
+            let senderInfoDiv = document.getElementById('sender-info');
+            if (!senderInfoDiv) {
+                senderInfoDiv = document.createElement('div');
+                senderInfoDiv.id = 'sender-info';
+                senderInfoDiv.className = 'alert alert-info';
+                document.querySelector('.header')?.after(senderInfoDiv);
+            }
+            senderInfoDiv.innerHTML = `<b>Người gửi:</b> <span class='text-primary'>${data.sender}</span>`;
+        }
+        // --- BỔ SUNG KIỂM TRA DỮ LIỆU ĐẦU VÀO ---
+        // Chỉ nhận nonce, ciphertext (không dùng encrypted_file)
+        let nonce = data.nonce;
+        let ciphertext = data.ciphertext;
+        if (typeof nonce === 'undefined' || typeof ciphertext === 'undefined' || nonce === null || ciphertext === null) {
+            showAlert(document.getElementById('received-files-list'), 'danger', 'Dữ liệu file nhận được không hợp lệ (thiếu nonce hoặc ciphertext)');
+            updateStepStatus('receive', 'error', 'Thiếu dữ liệu file!');
+            return;
+        }
+        // Log kiểu dữ liệu và giá trị nonce, ciphertext
+        console.log('[RECEIVER][TYPE] nonce:', typeof data.nonce, Array.isArray(data.nonce), data.nonce);
+        console.log('[RECEIVER][TYPE] ciphertext:', typeof data.ciphertext, Array.isArray(data.ciphertext), data.ciphertext);
+        // Chuyển đổi đúng kiểu nếu là mảng thường
+        if (Array.isArray(nonce)) nonce = new Uint8Array(nonce);
+        else if (nonce instanceof ArrayBuffer) nonce = new Uint8Array(nonce);
+        if (Array.isArray(ciphertext)) ciphertext = new Uint8Array(ciphertext);
+        else if (ciphertext instanceof ArrayBuffer) ciphertext = new Uint8Array(ciphertext);
+        // Kiểm tra length hợp lệ
+        if (!nonce.length || !ciphertext.length) {
+            showAlert(document.getElementById('received-files-list'), 'danger', 'Dữ liệu file nhận được rỗng (nonce/ciphertext)');
+            updateStepStatus('receive', 'error', 'Dữ liệu file rỗng!');
+            return;
+        }
         // 1. Kiểm tra expiration (nếu có)
         let expiration = null;
         if (data.metadata && data.metadata.expiration) {
@@ -420,14 +504,27 @@ socket.on('receive_file_data', async function(data) {
         }
         // 2. Kiểm tra hash (bao gồm expiration nếu có)
         updateStepStatus('hash', 'processing', 'Đang kiểm tra hash...');
-        const nonce = new Uint8Array(data.nonce);
-        const ciphertext = new Uint8Array(data.ciphertext);
+        // Log kiểu dữ liệu và giá trị nonce, ciphertext
+        console.log('[RECEIVER][TYPE] nonce:', typeof data.nonce, Array.isArray(data.nonce), data.nonce);
+        console.log('[RECEIVER][TYPE] ciphertext:', typeof data.ciphertext, Array.isArray(data.ciphertext), data.ciphertext);
+        // Chuyển đổi đúng kiểu nếu là mảng thường
+        if (Array.isArray(nonce)) nonce = new Uint8Array(nonce);
+        else if (nonce instanceof ArrayBuffer) nonce = new Uint8Array(nonce);
+        if (Array.isArray(ciphertext)) ciphertext = new Uint8Array(ciphertext);
+        else if (ciphertext instanceof ArrayBuffer) ciphertext = new Uint8Array(ciphertext);
+        expiration = data.expiration || null;
+        // Log debug giá trị trước khi tính hash
+        console.log('[RECEIVER] nonce:', nonce);
+        console.log('[RECEIVER] ciphertext:', ciphertext);
+        console.log('[RECEIVER] expiration:', expiration);
         let hashInputArr = [nonce, ciphertext];
         if (expiration) {
             const expBytes = new TextEncoder().encode(expiration);
             hashInputArr.push(new Uint8Array(expBytes));
+            console.log('[RECEIVER] expBytes:', expBytes);
         }
         const hashInput = concatUint8Arrays(hashInputArr);
+        console.log('[RECEIVER] hashInput:', hashInput);
         const hash = await sha512Hash(hashInput);
         if (hash !== data.hash) {
             updateStepStatus('hash', 'error', 'Hash không hợp lệ!');
@@ -567,6 +664,13 @@ async function renderReceiveHistory() {
 }
 window.addEventListener('DOMContentLoaded', renderReceiveHistory);
 
+document.getElementById('clear-receive-history').addEventListener('click', async function() {
+    if (confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử nhận file?')) {
+        await fetch('/api/file_history?role=receiver', { method: 'DELETE' });
+        renderReceiveHistory();
+    }
+});
+
 function updateStepStatus(step, status, message) {
     const stepMap = {
         receive: 0,
@@ -603,5 +707,16 @@ function updateStepStatus(step, status, message) {
         bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-info';
     }
 }
+
+document.getElementById('save-private-key').onclick = function() {
+    const key = document.getElementById('private_key').value.trim();
+    if (!key) {
+        alert('Vui lòng nhập private key!');
+        return;
+    }
+    localStorage.setItem('private_key', key);
+    alert('Đã lưu private key!');
+};
 </script>
-{% endblock %}
+{% endraw %}
+{% endblock %

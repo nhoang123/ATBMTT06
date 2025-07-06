@@ -70,7 +70,7 @@ def handle_handshake_ready(data):
     sender = data.get('sender')  # người nhận
     receiver = data.get('receiver')  # người gửi
     message = data.get('message')
-    logging.info(f'[SOCKET] Nhận handshake_ready: {data}')
+    logging.info(f'[SOCKET] Nhận handshake_ready: {data}') 
     logging.info(f'[SOCKET] user_sid_map hiện tại: {user_sid_map}')
     receiver_key = receiver.strip().lower() if receiver else ''
     if receiver_key in user_sid_map:

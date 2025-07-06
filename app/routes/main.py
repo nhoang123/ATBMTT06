@@ -292,7 +292,7 @@ Mã hash: [Sẽ được tạo tự động]
             'message': f'Lỗi tạo file test: {str(e)}'
         })
 
-@main.route('/api/file_history', methods=['POST', 'GET'])
+@main.route('/api/file_history', methods=['POST', 'GET', 'DELETE'])
 @login_required
 def file_history():
     if request.method == 'POST':
@@ -318,6 +318,14 @@ def file_history():
         db.session.add(entry)
         db.session.commit()
         return jsonify({'status': 'success', 'message': 'Đã lưu lịch sử file!'})
+    elif request.method == 'DELETE':
+        role = request.args.get('role')
+        q = FileHistory.query.filter_by(username=current_user.username)
+        if role:
+            q = q.filter_by(role=role)
+        deleted_count = q.delete()
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': f'Đã xóa {deleted_count} lịch sử file {role or ""} cho user {current_user.username}.'})
     else:
         # GET: lấy lịch sử gửi/nhận file của user hiện tại
         role = request.args.get('role')  # 'sender' hoặc 'receiver'
