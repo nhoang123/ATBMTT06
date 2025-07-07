@@ -6,7 +6,7 @@ from app.config import Config, SenderConfig, ReceiverConfig
 
 login_manager = LoginManager()
 login_manager.login_view = 'auth.login'  # Đường dẫn login, đổi nếu cần
-socketio = SocketIO()
+socketio = SocketIO(cors_allowed_origins="*", max_http_buffer_size=50*1024*1024)
 
 def create_app():
     app = Flask(__name__)

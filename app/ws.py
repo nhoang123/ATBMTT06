@@ -95,16 +95,13 @@ def ws_send_session_key(data):
 
 @socketio.on('send_file_data')
 def ws_send_file_data(data):
-    # data: {sender, receiver, filename, encrypted_file, encrypted_session_key, sender_private_key}
+    import logging
+    logging.warning('[SOCKET][send_file_data] Dữ liệu nhận được: %s', str(data)[:1000])  # log 1000 ký tự đầu
     receiver = data.get('receiver')
+    # Tăng giới hạn kích thước message nếu cần thiết ở file khởi tạo socketio
+    # Đảm bảo emit lại dữ liệu đúng nguyên bản
     if receiver in user_sid_map:
-        emit('receive_file_data', {
-            'sender': data.get('sender'),
-            'filename': data.get('filename'),
-            'encrypted_file': data.get('encrypted_file'),
-            'encrypted_session_key': data.get('encrypted_session_key'),
-            'sender_private_key': data.get('sender_private_key')
-        }, room=user_sid_map[receiver])
+        emit('receive_file_data', data, room=user_sid_map[receiver])
 
 @socketio.on('file_ack')
 def handle_file_ack(data):
