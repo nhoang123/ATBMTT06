@@ -32,7 +32,7 @@ def receiver_index():
 def verify_metadata():
     data = request.get_json()
     sender_username = data.get('sender_username')
-    metadata = data.get('metadata')
+    metadata = data.get('metadataString')
     signature = data.get('signature')
     if not sender_username or not metadata or not signature:
         return jsonify({'status': 'error', 'message': 'Thiếu thông tin xác thực!'}), 400
@@ -46,4 +46,4 @@ def verify_metadata():
         return jsonify({'status': 'error', 'message': 'Metadata không hợp lệ!'}), 400
     if not verify_metadata_signature(sender.public_key, metadata, signature):
         return jsonify({'status': 'error', 'message': 'Chữ ký metadata không hợp lệ!'}), 400
-    return jsonify({'status': 'success', 'message': 'Xác thực metadata thành công!'})
+    return jsonify({'status': 'success', 'message': 'Xác thực metadata thành công!', 'metadata': json.loads(metadata)})

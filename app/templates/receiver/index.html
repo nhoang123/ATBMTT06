@@ -418,9 +418,9 @@ async function verifySignature(metadataString, signatureB64, senderPublicKeyPem)
         ['verify']
     );
     const encoder = new TextEncoder();
-    const data = encoder.encode(JSON.stringify(metadata));
+    const data = encoder.encode(metadataString); // Dùng string gốc từ phía gửi
     const signature = Uint8Array.from(atob(signatureB64), c => c.charCodeAt(0));
-    console.log('[RECEIVER][VERIFY] metadata:', metadataString);
+    console.log('[RECEIVER][VERIFY] metadataString:', metadataString);
     console.log('[RECEIVER][VERIFY] signature:', signatureB64);
     console.log('[RECEIVER][VERIFY] senderPublicKeyPem:', senderPublicKeyPem);
     return await window.crypto.subtle.verify(
@@ -597,8 +597,6 @@ socket.on('receive_file_data', async function(data) {
         updateStepStatus('signature', 'processing', 'Đang xác thực chữ ký...');
         let senderPublicKey = '';
         try {
-            const res = await fetch(`/api/public_key/${encodeURIComponent(data.sender)}`);
-            const d = await res.json();
             if (d.status === 'success') senderPublicKey = d.public_key;
         } catch {}
         if (!senderPublicKey) {
@@ -607,7 +605,9 @@ socket.on('receive_file_data', async function(data) {
             alert('Không tìm thấy public key người gửi!');
             return;
         }
-        const signatureValid = await verifySignature(data.metadata, data.signature, senderPublicKey);
+        // Dùng metadataString gốc từ phía gửi để verify
+        const metadataString = data.metadataString;
+        const signatureValid = await verifySignature(metadataString, data.signature, senderPublicKey);
         if (!signatureValid) {
             updateStepStatus('signature', 'error', 'Chữ ký metadata không hợp lệ!');
             sendAckNack(data.sender, 'NACK', 'Chữ ký metadata không hợp lệ!');
@@ -615,6 +615,12 @@ socket.on('receive_file_data', async function(data) {
             return;
         }
         updateStepStatus('signature', 'done', 'Chữ ký hợp lệ!');
+        // Nếu cần hiển thị/log metadata:
+        let metadataObj = {};
+        try {
+            metadataObj = JSON.parse(metadataString);
+        } catch {}
+        console.log('[RECEIVER][VERIFY] metadata:', metadataObj);
         // 3. Giải mã session key
         updateStepStatus('decrypt', 'processing', 'Đang giải mã file...');
         const privateKey = localStorage.getItem('private_key') || '';
