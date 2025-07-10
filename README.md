@@ -45,12 +45,12 @@ Hệ thống gửi file `finance.txt` chứa dữ liệu ngân hàng với nén 
 - **Nếu không hợp lệ**: Từ chối → gửi NACK (lỗi integrity)
 
 
-### 📷 giao diện hệ thống
-![ảnh hệ thống](uploads/anh ht.jpg)
+### Ảnh minh họa hệ thống
+![ảnh hệ thống](uploads/so%20do%20ht.jpg)
 
-### 📷 giao diện phía người gửi và 
-![ảnh giao diện người gửi](uploads/anh nguoi gui.jpg)
-![ảnh giao diện người nhận](uploads/anh nguoi nhan.jpg)
+![ảnh giao diện người gửi](uploads/anh%20nguoi%20gui.jpg)
+
+![ảnh giao diện người nhận](uploads/anh%20nguoi%20nhan.jpg)
 
 
 ## 🚀 Cài Đặt & Chạy
