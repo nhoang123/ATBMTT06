@@ -46,11 +46,11 @@ Hệ thống gửi file `finance.txt` chứa dữ liệu ngân hàng với nén 
 
 
 ### 📷 giao diện hệ thống
-![ảnh hệ thống](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh ht.jpg)
+![ảnh hệ thống](uploads/anh ht.jpg)
 
 ### 📷 giao diện phía người gửi và 
-![ảnh giao diện người gửi](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh nguoi gui.jpg)
-![ảnh giao diện người nhận](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh nguoi nhan.jpg)
+![ảnh giao diện người gửi](uploads/anh nguoi gui.jpg)
+![ảnh giao diện người nhận](uploads/anh nguoi nhan.jpg)
 
 
 ## 🚀 Cài Đặt & Chạy
