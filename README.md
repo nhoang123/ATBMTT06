@@ -39,13 +39,15 @@ Hệ thống gửi file `finance.txt` chứa dữ liệu ngân hàng với nén 
   "sig": "<Signature>"
 }
 ```
-
 #### 4. Phía Người nhận
 - Kiểm tra hash, chữ ký, và tag
 - **Nếu hợp lệ**: Giải mã → giải nén → lưu file → gửi ACK
 - **Nếu không hợp lệ**: Từ chối → gửi NACK (lỗi integrity)
+
+
 ### 📷 giao diện hệ thống
 ![ảnh hệ thống](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh ht.jpg)
+
 ### 📷 giao diện phía người gửi và 
 ![ảnh giao diện người gửi](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh nguoi gui.jpg)
 ![ảnh giao diện người nhận](D:\Class16-06\HK3_2024-2025\ATTT\ThucHanh\my_web_project_python\uploads\anh nguoi nhan.jpg)
